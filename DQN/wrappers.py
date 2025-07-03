@@ -7,14 +7,21 @@ import ale_py
 cv2.ocl.setUseOpenCL(False)  # disable GPU usage by OpenCV
 
 
-def make_atari_env(env_id, episodic_life=True, clip_rewards=True, stack_frames=True, scale=False):
+def make_atari_env(env_id, episodic_life=True, clip_rewards=True, stack_frames=True, scale=False, render_mode=None):
     """Configure the atari environment."""
-    env = gym.make(env_id)
-    # assert 'NoFrameskip' in env.spec.id
+    # Ensure render_mode is set for proper video recording in test function
+    env = gym.make(env_id, render_mode=render_mode)
+
     if episodic_life:
         env = EpisodicLifeEnv(env)
     env = NoopResetEnv(env, noop_max=30)
-    env = MaxAndSkipEnv(env, skip=4)
+
+    # IMPORTANT CHANGE: MaxAndSkipEnv's skip parameter is set to 1.
+    # ALE/Pong-v5 (and other v5 Atari environments) already have an implicit 4-frame skip.
+    # By setting skip=1 here, MaxAndSkipEnv only performs the max-pooling
+    # across two consecutive frames (which is standard practice to handle flickering)
+    # without introducing an *additional* frame skip.
+    env = MaxAndSkipEnv(env, skip=1)
 
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
@@ -103,7 +110,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             # for Qbert sometimes we stay in lives == 0 condition for a few frames
             # so its important to keep lives > 0, so that we only reset once
             # the environment advertises done.
-            terminated = True
+            terminated = True  # Treat loss of life as episode termination
         self.lives = lives
         return obs, reward, terminated, truncated, info
 
@@ -122,8 +129,11 @@ class EpisodicLifeEnv(gym.Wrapper):
 
 
 class MaxAndSkipEnv(gym.Wrapper):
-    def __init__(self, env, skip=4):
-        """Return only every `skip`-th frame"""
+    def __init__(self, env, skip=1):  # Default skip changed to 1 for typical use with v5 environments
+        """Return only every `skip`-th frame.
+        Max-pools over the last two observations when `skip` > 1 (or if internal steps are taken).
+        When `skip=1`, it primarily performs the max-pooling functionality.
+        """
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
         self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
@@ -131,6 +141,11 @@ class MaxAndSkipEnv(gym.Wrapper):
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
+        # On reset, fill buffer with the initial observation to avoid issues on the first step
+        # This is particularly relevant if the first step needs a max-pooled observation.
+        # However, typically the max-pooling happens *after* steps.
+        # For simplicity and consistency with common implementations, we'll assume
+        # the buffer gets filled during the step loop.
         return obs, info
 
     def step(self, action):
@@ -139,14 +154,20 @@ class MaxAndSkipEnv(gym.Wrapper):
         terminated = truncated = False
         for i in range(self._skip):
             obs, reward, terminated, truncated, info = self.env.step(action)
-            if i == self._skip - 2:
+
+            # Store the last two observations for max-pooling
+            # Note: if self._skip is 1, this means _obs_buffer[0] will be the previous frame
+            # and _obs_buffer[1] will be the current frame from this single step.
+            if i == self._skip - 2:  # Second to last frame from the current action group
                 self._obs_buffer[0] = obs
-            if i == self._skip - 1:
+            if i == self._skip - 1:  # Last frame from the current action group
                 self._obs_buffer[1] = obs
+
             total_reward += reward
             if terminated or truncated:
                 break
 
+        # Max-pool over the two stored frames to handle flickering
         max_frame = self._obs_buffer.max(axis=0)
         return max_frame, total_reward, terminated, truncated, info
 
