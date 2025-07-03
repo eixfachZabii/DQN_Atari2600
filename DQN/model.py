@@ -37,7 +37,7 @@ class DQN(nn.Module):
         if random.random() > epsilon:
             state = torch.FloatTensor(np.float32(state)).unsqueeze(0).to(device)
             q_value = self.forward(state)
-            action = q_value.max(1)[1].data[0]
+            action = q_value.max(1)[1].item()  # Changed .data[0] to .item()
         else:
             action = random.randrange(self.num_actions)
         return action

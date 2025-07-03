@@ -1,7 +1,7 @@
 # Core ML and RL packages
 torch==2.5.1
 gymnasium[atari]~=1.2.0
-ale-py==0.9.1
+ale_py==0.9.1
 opencv-python~=4.11.0.86
 numpy~=2.3.1
 matplotlib>=3.7.0

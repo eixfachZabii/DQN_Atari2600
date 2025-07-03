@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="playing-atari-with-deep-RL" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="dqn-claude" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="crashout" project-jdk-type="Python SDK" />
 </project>

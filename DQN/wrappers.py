@@ -2,6 +2,7 @@ import numpy as np
 from collections import deque
 import gymnasium as gym
 import cv2
+import ale_py
 
 cv2.ocl.setUseOpenCL(False)  # disable GPU usage by OpenCV
 
