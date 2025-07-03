@@ -44,6 +44,7 @@ def compute_loss(model, replay_buffer, batch_size, gamma, device=device):
 
 
 def train(env, model, optimizer, replay_buffer, device=device):
+    print("Training...")
     steps_done = 0
     episode_rewards = []
     losses = []
@@ -83,6 +84,9 @@ def train(env, model, optimizer, replay_buffer, device=device):
             path = os.path.join(MODEL_SAVE_PATH, f"{env.spec.id}_episode_{episode + 1}.pth")
             print(f"Saving weights at Episode {episode + 1} ...")
             torch.save(model.state_dict(), path)
+
+        if (episode + 1) % 100 == 0:
+            print(f"Reward at Episode {episode + 1} is: {episode_rewards[-1]}. Loss: {np.mean(losses)}. Episode: {episode + 1}.")
     env.close()
 
 
