@@ -1,17 +1,18 @@
 import os
 import numpy as np
 import torch
-import gym
+import gymnasium as gym
 from Param import *
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
+import time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def plot_stats(frame_idx, rewards, losses):
     clear_output(True)
-    plt.figure(figsize=(20,5))
+    plt.figure(figsize=(20, 5))
     plt.subplot(131)
     plt.title(f'Total frames {frame_idx}. Avg reward over last 10 episodes: {np.mean(rewards[-10:])}')
     plt.plot(rewards)
@@ -41,20 +42,22 @@ def compute_loss(model, replay_buffer, batch_size, gamma, device=device):
 
     return loss
 
+
 def train(env, model, optimizer, replay_buffer, device=device):
     steps_done = 0
     episode_rewards = []
     losses = []
     model.train()
     for episode in range(EPISODES):
-        state = env.reset()
+        state, _ = env.reset()  # Updated for gymnasium API
         episode_reward = 0.0
         while True:
             epsilon = EPS_END + (EPS_START - EPS_END) * np.exp(- steps_done / EPS_DECAY)
             action = model.act(state, epsilon, device)
             steps_done += 1
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, terminated, truncated, _ = env.step(action)  # Updated for gymnasium API
+            done = terminated or truncated  # Combine termination conditions
             replay_buffer.push(state, action, reward, next_state, done)
 
             state = next_state
@@ -76,32 +79,42 @@ def train(env, model, optimizer, replay_buffer, device=device):
             if done:
                 episode_rewards.append(episode_reward)
                 break
-        if (episode+1) % 500 == 0:
-            path = os.path.join(MODEL_SAVE_PATH, f"{env.spec.id}_episode_{episode+1}.pth")
-            print(f"Saving weights at Episode {episode+1} ...")
+        if (episode + 1) % 500 == 0:
+            path = os.path.join(MODEL_SAVE_PATH, f"{env.spec.id}_episode_{episode + 1}.pth")
+            print(f"Saving weights at Episode {episode + 1} ...")
             torch.save(model.state_dict(), path)
     env.close()
 
 
 def test(env, model, episodes, render=True, device=device, context=""):
-    env = gym.wrappers.Monitor(env, VIDEO_SAVE_PATH + f'dqn_{env.spec.id}_video_{context}')
+    # Note: gym.wrappers.Monitor is deprecated in gymnasium
+    # You may need to use alternative recording methods or remove this wrapper
+    try:
+        env = gym.wrappers.RecordVideo(env, VIDEO_SAVE_PATH + f'dqn_{env.spec.id}_video_{context}')
+    except:
+        print("Warning: Could not set up video recording. Continuing without recording.")
+
     model.eval()
     for episode in range(episodes):
-        state = env.reset()
+        state, _ = env.reset()  # Updated for gymnasium API
         episode_reward = 0.0
         while True:
             action = model.act(state, 0, device)
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, terminated, truncated, _ = env.step(action)  # Updated for gymnasium API
+            done = terminated or truncated
 
             if render:
-                env.render()
-                time.sleep(0.02)
+                try:
+                    env.render()
+                    time.sleep(0.02)
+                except:
+                    pass  # In case rendering fails
 
             episode_reward += reward
             state = next_state
 
             if done:
-                print(f"Finished Episode {episode+1} with reward {episode_reward}")
+                print(f"Finished Episode {episode + 1} with reward {episode_reward}")
                 break
 
     env.close()
