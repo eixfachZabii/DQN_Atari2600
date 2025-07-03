@@ -12,10 +12,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def plot_stats(frame_idx, rewards, losses):
     clear_output(wait=True)
-    plt.figure(figsize=(10, 4))
+    plt.figure(figsize=(20, 5))
+
     plt.subplot(131)
-    plt.title(f'Total frames {frame_idx}. Avg reward over last 10 episodes: {np.mean(rewards[-10:])}')
+    avg_reward = np.mean(rewards[-10:]) if len(rewards) >= 10 else (np.mean(rewards) if rewards else 0)
+    plt.title(f'Total frames {frame_idx:,} | Episodes: {len(rewards)} | Avg Reward (last 10): {avg_reward:.1f}')
     plt.plot(rewards)
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+
     plt.subplot(132)
     plt.title('loss')
     plt.plot(losses)
@@ -52,7 +57,7 @@ def train(env, model, optimizer, replay_buffer, device=device):
     model.train()
 
     episode = 0
-    while steps_done < MAX_FRAMES:  # Changed this line
+    while steps_done < MAX_FRAMES:
         state, _ = env.reset()
         episode_reward = 0.0
         while True:
@@ -77,28 +82,28 @@ def train(env, model, optimizer, replay_buffer, device=device):
 
                 losses.append(loss.item())
 
+
+
+
             if steps_done % 10000 == 0:
                 plot_stats(steps_done, episode_rewards, losses)
+
+            if steps_done % 100_000 == 0:
+                path = os.path.join(MODEL_SAVE_PATH, f"{env.spec.id}_frame_{steps_done}.pth")
+                print(f"Saving weights at Frame {steps_done} ...")
+                torch.save(model.state_dict(), path)
+
+            if steps_done % 25000 == 0:
+                print(f"Frame {steps_done}. Episode {episode}. Reward: {episode_rewards[-1] if episode_rewards else 0}. Loss: {np.mean(losses[-1000:]) if losses else 0}.")
 
             if done:
                 episode_rewards.append(episode_reward)
                 break
 
-            if steps_done >= MAX_FRAMES:  # Add this check
+            if steps_done >= MAX_FRAMES:
                 break
 
         episode += 1
-        if steps_done % 200_000 == 0:
-            path = os.path.join(MODEL_SAVE_PATH, f"{env.spec.id}_frame_{steps_done}.pth")
-            print(f"Saving weights at Frame {steps_done} ...")
-            torch.save(model.state_dict(), path)
-
-        if steps_done % 25000 == 0:
-            print(
-                f"Frame {steps_done}. Episode {episode}. Reward: {episode_rewards[-1] if episode_rewards else 0}. Loss: {np.mean(losses[-1000:]) if losses else 0}.")
-
-        if steps_done == 1_000_000:
-            print(f"50% of frames done")
 
     env.close()
 
