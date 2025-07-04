@@ -1,4 +1,4 @@
-# Playing Atari with Deep Reinforcement Learning - DQN 🎮🤖
+# Playing Atari with Deep Reinforcement Learning - DQN 🤖
 
 #### Decision Making Algorithms Seminar Project 2025 - TUM
 
