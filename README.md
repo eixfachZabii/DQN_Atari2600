@@ -29,9 +29,11 @@ Our implementation faithfully reproduces the architecture and training methodolo
 The DQN algorithm operates through three main components:
 
 ### 1. Neural Network Architecture 🏗️
-* **Convolutional Layers**: Three conv layers (32, 64, 64 filters) for feature extraction from raw pixels
-* **Fully Connected Layers**: Two dense layers (512 hidden units) for action-value estimation
 * **Input Processing**: 84x84x4 grayscale frames (4 frames stacked for temporal information)
+* **Convolutional Layers**: Two conv layers (16 8x8, 32 4x4,) for feature extraction from raw pixels
+* **Fully Connected Layers**: One fully connected layer (256 hidden units) for action-value estimation
+
+![Alt Text](assets/CNN.png)
 
 ### 2. Training Process 🔄
 * **Experience Replay**: Store transitions in replay buffer, sample random minibatches for training
@@ -54,8 +56,8 @@ The DQN algorithm operates through three main components:
 Our DQN implementation successfully demonstrates the key findings from the original paper:
 
 | Game | Original Paper Score | Our Implementation | Human Performance |
-|------|---------------------|-------------------|------------------|
-| Pong | 18.9 | ~15-20 | 14.6 |
+|------|----------------------|-------------------|-------------------|
+| Pong | 20                   | ~15-20 | -3                |
 
 The agent learns effective strategies including ball tracking in Pong, brick-breaking patterns in Breakout, and defensive/offensive moves in Boxing.
 
