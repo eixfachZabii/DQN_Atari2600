@@ -33,15 +33,15 @@ The DQN algorithm operates through three main components:
 
 ![Alt Text](assets/CNN.png)
 
-### 2. Training Process 🔄
-* **Experience Replay**: Store transitions in replay buffer, sample random minibatches for training
-* **Epsilon-Greedy Exploration**: Gradually decay exploration from 100% to 1% over 1M steps
-
-### 3. Environment Preprocessing 🔧
+### 2. Environment Preprocessing 🔧
 * **Frame Stacking**: Stack 4 consecutive frames to capture motion
 * **Grayscale Conversion**: Convert RGB to grayscale for computational efficiency
 * **Frame Skipping**: Repeat actions for 4 frames to reduce computational requirements
 * **Reward Clipping**: Clip rewards to [-1, +1] for algorithm stability
+
+### 3. Training Process 🔄
+* **Experience Replay**: Store transitions in replay buffer, sample random minibatches for training
+* **Epsilon-Greedy Exploration**: Gradually decay exploration from 100% to 1% over 1M steps
 
 <hr style="height: 4px; background-color: #cccccc; border: none; margin: 32px 0;" />
 
