@@ -9,7 +9,7 @@ cv2.ocl.setUseOpenCL(False)  # disable GPU usage by OpenCV
 
 def make_atari_env(env_id):
     """Create Atari environment with CONSISTENT preprocessing as training"""
-    env = gym.make(env_id, render_mode='rgb_array')
+    env = gym.make(env_id, render_mode='rgb_array', repeat_action_probability=0.0)
     env = NoopResetEnv(env, noop_max=30)
 
 
