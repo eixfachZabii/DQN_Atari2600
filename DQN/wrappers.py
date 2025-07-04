@@ -7,33 +7,16 @@ import ale_py
 cv2.ocl.setUseOpenCL(False)  # disable GPU usage by OpenCV
 
 
-def make_atari_env(env_id, episodic_life=True, clip_rewards=True, stack_frames=True, scale=False, render_mode=None):
-    """Configure the atari environment."""
-    # Ensure render_mode is set for proper video recording in test function
-    env = gym.make(env_id, render_mode=render_mode)
-
-    if episodic_life:
-        env = EpisodicLifeEnv(env)
+def make_atari_env(env_id):
+    """Create Atari environment with CONSISTENT preprocessing as training"""
+    env = gym.make(env_id, render_mode='rgb_array')
     env = NoopResetEnv(env, noop_max=30)
 
-    # IMPORTANT CHANGE: MaxAndSkipEnv's skip parameter is set to 1.
-    # ALE/Pong-v5 (and other v5 Atari environments) already have an implicit 4-frame skip.
-    # By setting skip=1 here, MaxAndSkipEnv only performs the max-pooling
-    # across two consecutive frames (which is standard practice to handle flickering)
-    # without introducing an *additional* frame skip.
-    env = MaxAndSkipEnv(env, skip=1)
 
-    if 'FIRE' in env.unwrapped.get_action_meanings():
-        env = FireResetEnv(env)
+    env = MaxAndSkipEnv(env, skip=1)  # Changed from skip=4 to skip=1
 
     env = WarpFrame(env)
-    if scale:
-        env = ScaledFloatFrame(env)
-    if clip_rewards:
-        env = ClipRewardEnv(env)
-    if stack_frames:
-        env = FrameStack(env, 4)
-
+    env = FrameStack(env, 4)
     env = ImageToPyTorch(env)
     return env
 
