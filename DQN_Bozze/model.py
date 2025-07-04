@@ -8,17 +8,21 @@ import cv2
 import gymnasium as gym
 import ale_py
 import time
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # hyperparameters
 ENV_NAME = 'ALE/Pong-v5' # which game you want to play
-MEMORY_CAPACITY = 1e6 # paper mentions a replay memory capacity of 1 million
-TOTAL_FRAMES = 10e6
-START_EPSILON, END_EPSILON, STEPS = 1, 0.1, 1e6
+MEMORY_CAPACITY = 1_000_000 #with uint8 storage
+TOTAL_FRAMES = 10_000_000
+START_EPSILON, END_EPSILON, STEPS = 1, 0.1, 1_000_000
 AMOUNT_INPUT_FRAMES = 4
 BATCH_SIZE = 32
 DISCOUNT_FACTOR = 0.99 # gamma
 EVAL_EPSILON = 0.05
-EVAL_EVERY_FRAMES = 10_000
+EVAL_EVERY_FRAMES = 50_000
+UPDATE_TARGET_FREQ = 10_000
 
 # Register Atari environments
 gym.register_envs(ale_py)
@@ -55,9 +59,11 @@ class OriginalConvNet(nn.Module):
 
     def act(self, state):
         """ get action a_t given a state (4 stacked frames) """
+        device = next(self.parameters()).device
         self.eval()
         with torch.no_grad():
-            state_torch = torch.from_numpy(state).unsqueeze(0).float().to(self.device)
+            state_float = state.astype(np.float32) / 255.0
+            state_torch = torch.from_numpy(state_float).unsqueeze(0).to(device)
             q_values = self.forward(state_torch)
             return torch.argmax(q_values, dim=1).item()
 
@@ -78,6 +84,114 @@ class Epsilon:
 
     def get(self):
         return self.epsilon
+
+class DqnAgent:
+    """ The main class for acting and training """
+    def __init__(self, device, init_weights_path: str = None):
+        self.device = device
+        self.atari = AtariEnv()
+        self.model = OriginalConvNet(AMOUNT_INPUT_FRAMES, self.atari.amount_actions).to(device)
+
+        # Create seperate target network to prevent feedback loop (not described specifically enough in paper)
+        self.target_network = OriginalConvNet(AMOUNT_INPUT_FRAMES, self.atari.amount_actions).to(device)
+        self.target_network.load_state_dict(self.model.state_dict())
+        self.optim = torch.optim.RMSprop(self.model.parameters(), lr=0.00025, alpha=0.95, eps=0.01)
+        self.memory = ReplayMemory(MEMORY_CAPACITY)
+        self.epsilon = Epsilon(START_EPSILON, END_EPSILON, STEPS)
+        self.batch_size = BATCH_SIZE
+        self.gamma = DISCOUNT_FACTOR
+        self.logger = TrainLogger(self)
+
+        if init_weights_path:
+            self.model.load_state_dict(torch.load(init_weights_path))
+
+    def q(self, batch):
+        """ Get current Q values from a batch """
+        state, action, reward, next_state, done = batch
+
+        # State is already float and normalized from ReplayMemory.sample()
+        state = torch.FloatTensor(state).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
+
+        preds = self.model(state)
+        used_q =  preds.gather(1, action.unsqueeze(1)).squeeze(1) # gather only q values where the action was actually taken
+
+        return used_q
+
+
+    def compute_y(self, batch):
+        """ Computes the y (expected reward) needed for the bellman equation """
+        state, action, reward, next_state, done = batch
+
+        # Next_state is already float and normalized from ReplayMemory.sample()
+        next_state = torch.FloatTensor(next_state).to(self.device)
+        reward = torch.FloatTensor(reward).to(self.device)
+        done = torch.FloatTensor(done).to(self.device)
+
+        # run a forward pass through the model with the next state s'
+        q_values_new = self.target_network(next_state)
+
+        # select the highest q value
+        q_value_new = q_values_new.max(1)[0]
+
+        # r_j + γ * max_a′ Q(φj+1, a′; θ)
+        y = reward + self.gamma * q_value_new * (1 - done)
+
+        return y
+
+    def gradient_descent(self, loss):
+        """ Performs a gradient descent step given the computed loss """
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
+
+    def train(self):
+        frames_trained = 0
+        episode_num = 0
+        while frames_trained < TOTAL_FRAMES: # for episode = 1, M do
+            state = self.atari.reset()
+            episode_reward = 0.
+            while True: # for t = 1, T do
+                frames_trained += 1
+
+                # With probability epsilon select a random action at
+                if random.random() < self.epsilon.get_and_update():
+                    action = random.randrange(self.atari.amount_actions)
+                else:
+                    action = self.model.act(state)
+
+                # Execute action a_t in emulator and observe reward rt and image xt+1
+                next_state, reward, done = self.atari.step(action)
+
+                # Store transition (φt, at, rt, φt+1) in D (memory)
+                self.memory.push(state, action, reward, next_state, done)
+                state = next_state
+                episode_reward += reward
+
+                if len(self.memory) > BATCH_SIZE:
+                    # Sample random minibatch of transitions (φj , aj , rj , φj+1) from D
+                    batch = self.memory.sample(self.batch_size)
+
+                    # Compute Loss
+                    q_values = self.q(batch)
+                    y = self.compute_y(batch)
+                    loss = (y - q_values).pow(2).mean()   # mean squared error on actual vs predicted reward
+
+                    # Perform gradient descent step
+                    self.gradient_descent(loss)
+
+                    # update target network periodically
+                    if frames_trained % UPDATE_TARGET_FREQ == 0:
+                        self.target_network.load_state_dict(self.model.state_dict())
+
+                # evaluate model and save every eval_every_frames frames
+                if frames_trained > 0 and frames_trained % EVAL_EVERY_FRAMES == 0:
+                    self.logger.eval_and_save()
+
+                if done:
+                    episode_num += 1
+                    self.logger.log(episode_num, frames_trained, episode_reward)
+                    break
 
 class TrainLogger:
     def __init__(self, agent: DqnAgent):
@@ -143,7 +257,6 @@ class TrainLogger:
 
         plt.figure(figsize=(12, 6))
         plt.plot(self.episode_log, self.episode_scores, label='Episode Reward', alpha=0.5)
-        # Corrected label from 100 to 10 to match calculation
         plt.plot(self.episode_log, self.running_avg_scores, label='10-Episode Avg Reward', color='orange',
                  linewidth=2)
         plt.title(f'Training Rewards for {ENV_NAME} (Run ID: {self.run_id})')
@@ -228,120 +341,32 @@ class TrainLogger:
         else:
             print(f"Score of {average_score:.2f} did not beat current best of {self.current_best:.2f}. Not saving.")
 
-        # --- NEW: Generate and save the reward plot during training ---
+        # --- Generate and save the reward plot during training ---
         self._generate_reward_plot()
 
         self.network.train()  # IMPORTANT: Restore the network to training mode for the main training loop
         print("--- Finished Evaluation ---\n")
 
-class DqnAgent:
-    """ The main class for acting and training """
-    def __init__(self, device, init_weights_path: str = None):
-        self.device = device
-        self.atari = AtariEnv()
-        self.model = OriginalConvNet(AMOUNT_INPUT_FRAMES, self.atari.amount_actions).to(device)
-        self.optim = torch.optim.RMSprop(self.model.parameters(), lr=0.00025, alpha=0.95, eps=0.01)
-        self.memory = ReplayMemory(MEMORY_CAPACITY)
-        self.epsilon = Epsilon(START_EPSILON, END_EPSILON, STEPS)
-        self.batch_size = BATCH_SIZE
-        self.gamma = DISCOUNT_FACTOR
-        self.logger = TrainLogger(self)
-
-        if init_weights_path:
-            self.model.load_state_dict(torch.load(init_weights_path))
-
-    def q(self, batch):
-        """ Get current Q values from a batch """
-        state, action, reward, next_state, done = batch
-
-        state = torch.FloatTensor(np.float32(state)).to(self.device)
-        action = torch.LongTensor(action).to(self.device)
-
-        preds = self.model(state)
-        used_q =  preds.gather(1, action.unsqueeze(1)).squeeze(1) # gather only q values where the action was actually taken
-
-        return used_q
-
-
-    def compute_y(self, batch):
-        """ Computes the y (expected reward) needed for the bellman equation """
-        state, action, reward, next_state, done = batch
-
-        next_state = torch.FloatTensor(np.float32(next_state)).to(self.device)
-        reward = torch.FloatTensor(reward).to(self.device)
-        done = torch.FloatTensor(done).to(self.device)
-
-        # run a forward pass through the model with the next state s'
-        q_values_new = self.model(next_state)
-
-        # select the highest q value
-        q_value_new = q_values_new.max(1)[0]
-
-        # r_j + γ * max_a′ Q(φj+1, a′; θ)
-        y = reward + self.gamma * q_value_new * (1 - done)
-
-        return y
-
-    def gradient_descent(self, loss):
-        """ Performs a gradient descent step given the computed loss """
-        self.optim.zero_grad()
-        loss.backward()
-        self.optim.step()
-
-    def train(self):
-        frames_trained = 0
-        while frames_trained < TOTAL_FRAMES: # for episode = 1, M do
-            if frames_trained > 0 and frames_trained % EVAL_EVERY_FRAMES == 0:
-                self.logger.eval_and_save()
-            state = self.atari.reset()
-            episode_reward = 0.
-            episode_num = 0
-            while True: # for t = 1, T do
-                frames_trained += 1
-
-                # With probability epsilon select a random action at
-                if random.random() < self.epsilon.get_and_update():
-                    action = random.randrange(self.atari.amount_actions)
-                else:
-                    action = self.model.act(state)
-
-                # Execute action a_t in emulator and observe reward rt and image xt+1
-                next_state, reward, done = self.atari.step(action)
-
-                # Store transition (φt, at, rt, φt+1) in D (memory)
-                self.memory.push(state, action, reward, next_state, done)
-                state = next_state
-                episode_reward += reward
-
-                if len(self.memory) > BATCH_SIZE:
-                    # Sample random minibatch of transitions (φj , aj , rj , φj+1) from D
-                    batch = self.memory.sample(self.batch_size)
-
-                    # Compute Loss
-                    q_values = self.q(batch)
-                    y = self.compute_y(batch)
-                    loss = (y - q_values).pow(2).mean()   # mean squared error on actual vs predicted reward
-
-                    # Perform gradient descent step
-                    self.gradient_descent(loss)
-
-                if done:
-                    episode_num += 1
-                    self.logger.log(episode_num, frames_trained, episode_reward)
-                    break
-
 class ReplayMemory:
     def __init__(self, capacity):
         self.capacity = capacity
+        # We store tuples of (state, action, reward, next_state, done)
+        # States are stored as uint8 to save RAM
         self.memory = deque(maxlen=capacity)
 
     def push(self, state, action, reward, next_state, done):
+        # state and next_state are numpy arrays of dtype=uint8
         self.memory.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
         batch = random.sample(self.memory, batch_size)
         state, action, reward, next_state, done = map(np.stack, zip(*batch))
-        return state.astype(np.float32), action, reward, next_state.astype(np.float32), done
+
+        # This is the key memory optimization.
+        state = state.astype(np.float32) / 255.0
+        next_state = next_state.astype(np.float32) / 255.0
+
+        return state, action, reward, next_state, done
 
     def __len__(self):
         return len(self.memory)
@@ -352,6 +377,7 @@ class AtariEnv:
         self.env = gym.make(ENV_NAME, render_mode='rgb_array', repeat_action_probability=0)
         self.amount_actions = self.env.action_space.n
         self.frames_stack = AMOUNT_INPUT_FRAMES
+        # This deque will store uint8 frames
         self.frames = deque(maxlen=self.frames_stack)
 
     def reset(self):
@@ -359,6 +385,7 @@ class AtariEnv:
         processed_frame = preprocess_frames(obs)
         for _ in range(self.frames_stack):
             self.frames.append(processed_frame)
+        # Return a numpy array of stacked uint8 frames
         return np.array(self.frames)
 
     def step(self, action):
@@ -374,20 +401,27 @@ class AtariEnv:
 
         # clip rewards to be 1 for positive rewards, -1 for negative and 0 for nothing
         clipped_reward = np.sign(full_reward)
+        # Return a numpy array of stacked uint8 frames
         return np.array(self.frames), clipped_reward, ended
 
 
 def preprocess_frames(frame):
     """
-    referred to as φ in the paper
-    idea to make it better: resize to 84*84 instead of cropping such that all playing area is always visible
+    Returns a uint8 array to save memory.
+    The normalization (division by 255) is deferred until a batch is sampled.
     """
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     downsampled_frame = cv2.resize(gray_frame, (84, 110))
-    cropped_frame = downsampled_frame[18:102, :] / 255 # divide by 255 to normalize between 0 and 1
+    # Crop and keep as uint8
+    cropped_frame = downsampled_frame[18:102, :]
     return cropped_frame
+
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     agent = DqnAgent(device)
-    agent.train()
+    try:
+        agent.train()
+    finally:
+        agent.logger.save()
