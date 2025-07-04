@@ -17,6 +17,8 @@ START_EPSILON, END_EPSILON, STEPS = 1, 0.1, 1e6
 AMOUNT_INPUT_FRAMES = 4
 BATCH_SIZE = 32
 DISCOUNT_FACTOR = 0.99 # gamma
+EVAL_EPSILON = 0.05
+EVAL_EVERY_FRAMES = 10_000
 
 # Register Atari environments
 gym.register_envs(ale_py)
@@ -55,10 +57,11 @@ class OriginalConvNet(nn.Module):
         """ get action a_t given a state (4 stacked frames) """
         self.eval()
         with torch.no_grad():
-            state_torch = torch.from_numpy(state).unsqueeze(0).float().to(device)
+            state_torch = torch.from_numpy(state).unsqueeze(0).float().to(self.device)
             q_values = self.forward(state_torch)
             return torch.argmax(q_values, dim=1).item()
 
+# some utils
 class Epsilon:
     def __init__(self, start_value, end_value, decrement_until):
         self.decrement_until = decrement_until
@@ -76,6 +79,160 @@ class Epsilon:
     def get(self):
         return self.epsilon
 
+class TrainLogger:
+    def __init__(self, agent: DqnAgent):
+        self.agent = agent
+        self.network = self.agent.model
+        self.atari = self.agent.atari
+        self.eval_epsilon = EVAL_EPSILON
+        self.current_best = -100.0
+
+        # --- Logging Lists ---
+        self.episode_scores = []
+        self.running_avg_scores = []
+        self.frame_log = []
+        self.episode_log = []
+
+        # --- Run ID and Path Setup ---
+        base_dir = "models"
+        os.makedirs(base_dir, exist_ok=True)
+
+        run_id = 0
+        while os.path.exists(os.path.join(base_dir, str(run_id))):
+            run_id += 1
+
+        self.run_id = run_id
+        # Sanitize ENV_NAME to be a valid directory name (e.g., "ALE/Pong-v5" -> "ALE_Pong-v5")
+        sanitized_env_name = ENV_NAME.replace('/', '_')
+        self.save_dir = os.path.join(base_dir, str(self.run_id), sanitized_env_name)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        print(f"Initialized Logger for Run ID: {self.run_id}")
+        print(f"Models will be saved in: {self.save_dir}")
+
+    def log(self, episode_num, frame_num, episode_reward):
+        """
+        Call this method after each episode to log performance.
+
+        Args:
+            episode_num (int): The current episode number.
+            frame_num (int): The total number of frames trained so far.
+            episode_reward (float): The total reward for the completed episode.
+        """
+        self.episode_scores.append(episode_reward)
+        self.frame_log.append(frame_num)
+        self.episode_log.append(episode_num)
+
+        # Calculate running average over last 10 episodes
+        running_avg = np.mean(self.episode_scores[-10:])
+        self.running_avg_scores.append(running_avg)
+
+        print(
+            f"Ep: {episode_num} | Frames: {frame_num} | Reward: {episode_reward:.1f} | "
+            f"10-Ep Avg: {running_avg:.2f} | Epsilon: {self.agent.epsilon.get():.4f}"
+        )
+
+    def _generate_reward_plot(self):
+        """
+        Generates and saves a plot of the training rewards.
+        This is a helper method called by eval_and_save() and save().
+        """
+        # Avoid plotting if there's no data
+        if not self.episode_log:
+            return
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.episode_log, self.episode_scores, label='Episode Reward', alpha=0.5)
+        # Corrected label from 100 to 10 to match calculation
+        plt.plot(self.episode_log, self.running_avg_scores, label='10-Episode Avg Reward', color='orange',
+                 linewidth=2)
+        plt.title(f'Training Rewards for {ENV_NAME} (Run ID: {self.run_id})')
+        plt.xlabel('Episode')
+        plt.ylabel('Reward')
+        plt.legend()
+        plt.grid(True)
+
+        plot_path = os.path.join(self.save_dir, 'reward_plot.png')
+        plt.savefig(plot_path)
+        plt.close()  # Important to free up memory
+        print(f"Updated reward plot saved to {plot_path}")
+
+    def save(self):
+        """
+        Call this method at the end of training to save all statistics and plots.
+        """
+        print(f"\n--- Saving final run data to {self.save_dir} ---")
+
+        # 1. Save training log data to a CSV file
+        df = pd.DataFrame({
+            'episode': self.episode_log,
+            'frame': self.frame_log,
+            'reward': self.episode_scores,
+            'running_avg_reward': self.running_avg_scores
+        })
+        df.to_csv(os.path.join(self.save_dir, 'training_log.csv'), index=False)
+        print("Training log saved to training_log.csv")
+
+        # 2. Generate and save the final reward plot
+        self._generate_reward_plot()
+
+        # 3. Save the final model state
+        final_model_path = os.path.join(self.save_dir, 'final_model.pth')
+        torch.save(self.network.state_dict(), final_model_path)
+        print(f"Final model saved to {final_model_path}")
+
+        print("--- Save complete! ---")
+
+    def eval_and_save(self):
+        """
+        Evaluates the agent's performance, saves the model if it's a new best,
+        and updates the reward plot for mid-training analysis.
+        """
+        print("\n--- Starting Evaluation ---")
+        self.network.eval()  # Set the network to evaluation mode
+
+        total_reward = 0.0
+        num_episodes = 10
+
+        for i in range(num_episodes):
+            state = self.atari.reset()
+            episode_reward = 0.0
+            done = False
+
+            while not done:
+                # Epsilon-greedy action selection for evaluation
+                if random.random() < self.eval_epsilon:
+                    action = random.randrange(self.atari.amount_actions)
+                else:
+                    # self.network.act() already handles torch.no_grad()
+                    action = self.network.act(state)
+
+                next_state, reward, done = self.atari.step(action)
+
+                state = next_state
+                episode_reward += reward
+
+            total_reward += episode_reward
+
+        average_score = total_reward / num_episodes
+        print(f"Evaluation Complete. Average Score over {num_episodes} episodes: {average_score:.2f}")
+
+        if average_score > self.current_best:
+            print(f"New best model found! Score: {average_score:.2f} (old best: {self.current_best:.2f})")
+            self.current_best = average_score
+
+            # Save the model state dictionary
+            model_save_path = os.path.join(self.save_dir, 'best_model.pth')
+            torch.save(self.network.state_dict(), model_save_path)
+            print(f"Model saved to {model_save_path}")
+        else:
+            print(f"Score of {average_score:.2f} did not beat current best of {self.current_best:.2f}. Not saving.")
+
+        # --- NEW: Generate and save the reward plot during training ---
+        self._generate_reward_plot()
+
+        self.network.train()  # IMPORTANT: Restore the network to training mode for the main training loop
+        print("--- Finished Evaluation ---\n")
 
 class DqnAgent:
     """ The main class for acting and training """
@@ -88,6 +245,7 @@ class DqnAgent:
         self.epsilon = Epsilon(START_EPSILON, END_EPSILON, STEPS)
         self.batch_size = BATCH_SIZE
         self.gamma = DISCOUNT_FACTOR
+        self.logger = TrainLogger(self)
 
         if init_weights_path:
             self.model.load_state_dict(torch.load(init_weights_path))
@@ -133,8 +291,11 @@ class DqnAgent:
     def train(self):
         frames_trained = 0
         while frames_trained < TOTAL_FRAMES: # for episode = 1, M do
+            if frames_trained > 0 and frames_trained % EVAL_EVERY_FRAMES == 0:
+                self.logger.eval_and_save()
             state = self.atari.reset()
             episode_reward = 0.
+            episode_num = 0
             while True: # for t = 1, T do
                 frames_trained += 1
 
@@ -165,6 +326,8 @@ class DqnAgent:
                     self.gradient_descent(loss)
 
                 if done:
+                    episode_num += 1
+                    self.logger.log(episode_num, frames_trained, episode_reward)
                     break
 
 class ReplayMemory:
@@ -186,7 +349,7 @@ class ReplayMemory:
 class AtariEnv:
     """ Wraps the env that simulates the atari game to create sufficient input for the neural net """
     def __init__(self):
-        self.env = gym.make(ENV_NAME, render_mode='rgb_array')
+        self.env = gym.make(ENV_NAME, render_mode='rgb_array', repeat_action_probability=0)
         self.amount_actions = self.env.action_space.n
         self.frames_stack = AMOUNT_INPUT_FRAMES
         self.frames = deque(maxlen=self.frames_stack)
