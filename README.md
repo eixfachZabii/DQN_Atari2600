@@ -50,7 +50,7 @@ The DQN algorithm operates through three main components:
 * **Faithful Implementation**: Complete reproduction of the original DQN architecture and training methodology
 * **Interactive Demos**: Real-time gameplay visualization with Q-value analysis
 * **Educational Tools**: Step-by-step training process with detailed logging and visualization
-* 
+
 ## 🚀 Key Features
 
 * **Original Architecture**: Exact replication of the 2013 DQN network architecture
