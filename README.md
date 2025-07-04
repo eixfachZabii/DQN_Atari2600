@@ -1,12 +1,16 @@
-# Playing Atari with Deep Reinforcement Learning 🎮🤖
+# Playing Atari with Deep Reinforcement Learning - DQN 🎮🤖
 
-**Decision Making Algorithms Seminar Project 2025 - TUM**
+#### Decision Making Algorithms Seminar Project 2025 - TUM
 
 ![Alt Text](DQN/videos/pong_800.gif)
 
 This project presents a complete implementation and analysis of the groundbreaking 2013 DeepMind paper ["Playing Atari with Deep Reinforcement Learning"](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) by Mnih et al., developed as part of our seminar on Decision Making Algorithms.
 
 The Deep Q-Network (DQN) algorithm revolutionized reinforcement learning by successfully combining deep neural networks with Q-learning, achieving super human-level performance on multiple Atari 2600 games using only raw pixel inputs and game scores.
+
+<hr style="height: 4px; background-color: #cccccc; border: none; margin: 32px 0;" />
+
+
 
 ## 📖 About the Paper
 
@@ -17,12 +21,6 @@ The original DQN paper introduced several key innovations that made deep reinfor
 * **Human-Level Performance**: First algorithm to achieve human-level control on a wide variety of Atari games
 
 Our implementation faithfully reproduces the architecture and training methodology described in the original paper, providing both educational insights and practical demonstrations of the algorithm's capabilities.
-
-## 🎯 Project Highlights
-
-* **Faithful Implementation**: Complete reproduction of the original DQN architecture and training methodology
-* **Interactive Demos**: Real-time gameplay visualization with Q-value analysis
-* **Educational Tools**: Step-by-step training process with detailed logging and visualization
 
 ## 🧠 How DQN Works
 
@@ -45,6 +43,14 @@ The DQN algorithm operates through three main components:
 * **Frame Skipping**: Repeat actions for 4 frames to reduce computational requirements
 * **Reward Clipping**: Clip rewards to [-1, +1] for algorithm stability
 
+<hr style="height: 4px; background-color: #cccccc; border: none; margin: 32px 0;" />
+
+## 🎯 Project Highlights
+
+* **Faithful Implementation**: Complete reproduction of the original DQN architecture and training methodology
+* **Interactive Demos**: Real-time gameplay visualization with Q-value analysis
+* **Educational Tools**: Step-by-step training process with detailed logging and visualization
+* 
 ## 🚀 Key Features
 
 * **Original Architecture**: Exact replication of the 2013 DQN network architecture
@@ -72,11 +78,9 @@ Step through gameplay frame-by-frame, pause/resume, and analyze specific game st
 ### Comprehensive Benchmarking
 Statistical evaluation over hundreds of episodes with win/loss analysis and performance metrics.
 
-### Video Recording
-Automatic generation of gameplay videos for demonstration and analysis purposes.
+<hr style="height: 4px; background-color: #cccccc; border: none; margin: 32px 0;" />
 
-
-## 🤝 Contributors
+## 🕹️ Contributors
 
 Developed for the Seminar: Decision-Making Algorithms 2025 by:
 
@@ -84,6 +88,4 @@ Developed for the Seminar: Decision-Making Algorithms 2025 by:
 * **Paul Vorderbrügge**
 * **Sebastian Rogg**
 
----
-
-*This project was developed as part of the Decision Making Algorithms seminar, exploring the foundational work that launched the modern era of deep reinforcement learning.*
+* **inspired by the repo of Shubham Lohiya:** https://github.com/shubhlohiya/playing-atari-with-deep-RL
