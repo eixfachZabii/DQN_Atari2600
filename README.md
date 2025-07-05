@@ -2,7 +2,7 @@
 
 #### Decision Making Algorithms Seminar Project 2025 - TUM
 
-![Alt Text](DQN/videos/pong_800.gif)
+![PONG](assets/PONG_Q.gif)
 
 This project presents a complete implementation and analysis of the groundbreaking 2013 DeepMind paper ["Playing Atari with Deep Reinforcement Learning"](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) by Mnih et al., developed as part of our seminar on Decision Making Algorithms.
 
@@ -63,10 +63,12 @@ The DQN algorithm operates through three main components:
 Our DQN implementation successfully demonstrates the key findings from the original paper:
 
 | Game | Original Paper Score | Our Implementation | Human Performance |
-|------|----------------------|-------------------|-------------------|
-| Pong | 20                   | ~15-20 | -3                |
+|------|----------------------|--------------------|-------------------|
+| Pong | 20                   | 20                 | -3                |
 
 The agent learns effective strategies including ball tracking in Pong, brick-breaking patterns in Breakout, and defensive/offensive moves in Boxing.
+
+![Alt Text](assets/result.jpeg)
 
 ## 🔍 Advanced Features
 
