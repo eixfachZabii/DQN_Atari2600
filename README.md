@@ -2,6 +2,7 @@
 
 #### Decision Making Algorithms Seminar Project 2025 - TUM
 
+model is the right player
 ![PONG](assets/PONG_Q.gif)
 
 This project presents a complete implementation and analysis of the groundbreaking 2013 DeepMind paper ["Playing Atari with Deep Reinforcement Learning"](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) by Mnih et al., developed as part of our seminar on Decision Making Algorithms.
