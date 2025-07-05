@@ -17,4 +17,4 @@ while True:
 
     print('Moved at ' + str(result) + ' ('  + str(x) + ', ' + str(y) + ')')
 
-    time.sleep(10)
+    time.sleep(60)
