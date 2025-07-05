@@ -77,7 +77,7 @@ def train(env, current_model, target_model, optimizer, replay_buffer, device=dev
     print("Starting DQN training with target network...")
     print(f"Target network update frequency: {TARGET_UPDATE_FREQ} steps")
 
-    steps_done = 1_400_000
+    steps_done = 1_900_000
     episode_rewards = []
     losses = []
     current_model.train()
