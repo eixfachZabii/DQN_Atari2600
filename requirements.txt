@@ -1,0 +1,26 @@
+# Core ML and RL packages
+torch==2.5.1
+gymnasium[atari]~=1.2.0
+ale_py==0.9.1
+opencv-python~=4.11.0.86
+numpy~=2.3.1
+matplotlib>=3.7.0
+scipy>=1.11.0
+matplotlib~=3.10.3
+imageio~=2.37.0
+
+# Jupyter and notebook packages
+notebook>=7.0.0
+jupyterlab>=4.0.0
+ipython>=8.12.0
+ipykernel>=6.25.0
+ipywidgets>=8.0.0
+matplotlib-inline>=0.1.6
+
+# Additional dependencies that might be needed
+pillow>=10.0.0
+cloudpickle>=2.2.0
+gymnasium[other]>=0.29.1
+
+# Optional: for better performance
+psutil>=5.9.0
